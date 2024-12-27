@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import * as pdfjs from "pdfjs-dist";
 import { jsPDF } from "jspdf";
 
-// Set the worker source
-pdfjs.GlobalWorkerOptions.workerSrc = "../../public/pdf.worker.min.js";
+pdfjs.GlobalWorkerOptions.workerSrc = "pdf.worker.min.js";
 
 const AnnotatedPdf = ({ file }) => {
-  const [pages, setPages] = useState([]); // Array of { page, canvas }
-  const [drawingData, setDrawingData] = useState([]); // Array to store drawing data for each page
+  const [pages, setPages] = useState([]);
+  const [drawingData, setDrawingData] = useState([]);
+  const [isDrawingMode, setIsDrawingMode] = useState(false);
+  
   const isDrawing = useRef(false);
 
   useEffect(() => {
@@ -17,29 +18,25 @@ const AnnotatedPdf = ({ file }) => {
 
       for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
         const page = await pdf.getPage(pageNumber);
-        const scale = 2; // High quality rendering
+        const scale = 2;
         const viewport = page.getViewport({ scale });
 
-        // Create a base canvas for the page
         const baseCanvas = document.createElement("canvas");
         const baseContext = baseCanvas.getContext("2d");
         baseCanvas.width = viewport.width;
         baseCanvas.height = viewport.height;
 
-        // Render the page onto the base canvas
         const renderContext = {
           canvasContext: baseContext,
           viewport,
         };
         await page.render(renderContext).promise;
 
-        // Create a drawing canvas that will sit on top
         const drawingCanvas = document.createElement("canvas");
         const drawingContext = drawingCanvas.getContext("2d");
         drawingCanvas.width = baseCanvas.width;
         drawingCanvas.height = baseCanvas.height;
 
-        // Store page and canvases
         renderedPages.push({
           page,
           baseCanvas,
@@ -54,37 +51,52 @@ const AnnotatedPdf = ({ file }) => {
     renderPDF().catch(console.error);
   }, [file]);
 
-  const handleMouseDown = (e, index) => {
-    isDrawing.current = true;
-    const ctx = pages[index].drawingCanvas.getContext("2d");
-    const offsetX = e.nativeEvent.offsetX;
-    const offsetY = e.nativeEvent.offsetY;
-    ctx.beginPath();
-    ctx.moveTo(offsetX, offsetY);
+  const normalizeEvent = (e, canvas) => {
+    let rect = canvas.getBoundingClientRect();
+    if (e.touches) {
+      const touch = e.touches[0];
+      return {
+        x: touch.clientX - rect.left,
+        y: touch.clientY - rect.top,
+      };
+    } else {
+      return {
+        x: e.nativeEvent.offsetX,
+        y: e.nativeEvent.offsetY,
+      };
+    }
+  };
 
-    // Save drawing data
+  const handleStart = (e, index) => {
+    if (!isDrawingMode) return;
+    isDrawing.current = true;
+    const canvas = pages[index].drawingCanvas;
+    const ctx = canvas.getContext("2d");
+    const { x, y } = normalizeEvent(e, canvas);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+
     setDrawingData((prev) => [
       ...prev,
-      { pageIndex: index, type: "start", x: offsetX, y: offsetY },
+      { pageIndex: index, type: "start", x, y },
     ]);
   };
 
-  const handleMouseMove = (e, index) => {
-    if (!isDrawing.current) return;
-    const ctx = pages[index].drawingCanvas.getContext("2d");
-    const offsetX = e.nativeEvent.offsetX;
-    const offsetY = e.nativeEvent.offsetY;
-    ctx.lineTo(offsetX, offsetY);
+  const handleMove = (e, index) => {
+    if (!isDrawingMode || !isDrawing.current) return;
+    const canvas = pages[index].drawingCanvas;
+    const ctx = canvas.getContext("2d");
+    const { x, y } = normalizeEvent(e, canvas);
+    ctx.lineTo(x, y);
     ctx.stroke();
 
-    // Save drawing data
     setDrawingData((prev) => [
       ...prev,
-      { pageIndex: index, type: "draw", x: offsetX, y: offsetY },
+      { pageIndex: index, type: "draw", x, y },
     ]);
   };
 
-  const handleMouseUp = () => {
+  const handleEnd = () => {
     isDrawing.current = false;
   };
 
@@ -92,22 +104,17 @@ const AnnotatedPdf = ({ file }) => {
     const pdf = new jsPDF();
 
     pages.forEach(({ baseCanvas, drawingCanvas }, index) => {
-      // Create an offscreen canvas to combine the base and drawing layers
       const offscreenCanvas = document.createElement("canvas");
       const offscreenCtx = offscreenCanvas.getContext("2d");
       offscreenCanvas.width = baseCanvas.width;
       offscreenCanvas.height = baseCanvas.height;
 
-      // Draw the base PDF page onto the offscreen canvas
       offscreenCtx.drawImage(baseCanvas, 0, 0);
-
-      // Overlay the drawing canvas
       offscreenCtx.drawImage(drawingCanvas, 0, 0);
 
-      // Add the combined image to the PDF
       const imgData = offscreenCanvas.toDataURL("image/png");
       const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (baseCanvas.height * pdfWidth) / baseCanvas.width; // Maintain aspect ratio
+      const pdfHeight = (baseCanvas.height * pdfWidth) / baseCanvas.width;
       if (index > 0) pdf.addPage();
       pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
     });
@@ -117,12 +124,19 @@ const AnnotatedPdf = ({ file }) => {
 
   return (
     <div>
+      <button
+        onClick={() => setIsDrawingMode((prev) => !prev)}
+        style={{ padding: "10px 20px", marginBottom: "20px", cursor: "pointer" }}
+      >
+        {isDrawingMode ? "Disable Drawing" : "Enable Drawing"}
+      </button>
       <div
         style={{
-          overflowY: "scroll",
+          overflow: isDrawingMode ? "hidden" : "scroll", // Prevent scrolling when drawing mode is enabled
           height: "80vh",
           border: "1px solid #ccc",
           padding: "10px",
+          touchAction: isDrawingMode ? "none" : "auto", // Only disable touch action when drawing mode is active
         }}
       >
         {pages.map(({ baseCanvas, drawingCanvas }, index) => (
@@ -153,11 +167,14 @@ const AnnotatedPdf = ({ file }) => {
                 top: 0,
                 left: 0,
                 border: "none",
-                cursor: "crosshair",
+                cursor: isDrawingMode ? "crosshair" : "default",
               }}
-              onMouseDown={(e) => handleMouseDown(e, index)}
-              onMouseMove={(e) => handleMouseMove(e, index)}
-              onMouseUp={handleMouseUp}
+              onMouseDown={(e) => handleStart(e, index)}
+              onMouseMove={(e) => handleMove(e, index)}
+              onMouseUp={handleEnd}
+              onTouchStart={(e) => handleStart(e, index)}
+              onTouchMove={(e) => handleMove(e, index)}
+              onTouchEnd={handleEnd}
             />
           </div>
         ))}
