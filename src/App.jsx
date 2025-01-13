@@ -1,6 +1,7 @@
 import "./App.css";
 import React, { useState } from "react";
 import AnnotatedPdf from "./components/AnnonatedPdf";
+import AnnotatedPdfUpdate from "./components/AnnonatedPdfUpdate";
 
 function App() {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -30,8 +31,13 @@ function App() {
       </div>
 
       {/* Render AnnotatedPdf if a file is selected */}
-      {fileURL ? (
+      {/* {fileURL ? (
         <AnnotatedPdf file={fileURL} />
+      ) : (
+        <p>Please select a PDF file to annotate.</p>
+      )} */}
+      {fileURL ? (
+        <AnnotatedPdfUpdate file={fileURL} />
       ) : (
         <p>Please select a PDF file to annotate.</p>
       )}
