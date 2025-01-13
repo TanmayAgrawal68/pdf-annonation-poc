@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { PDFDocument, rgb } from "pdf-lib";
 import { Document, Page } from "react-pdf";
 import { pdfjs } from "react-pdf";
-import { ZoomIn, ZoomOut, ChevronRight, ChevronLeft } from "lucide-react"; // ShadCN Icons
+import { ZoomIn, ZoomOut, ChevronRight, ChevronLeft } from "lucide-react";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 pdfjs.GlobalWorkerOptions.workerSrc = "pdfjs.worker.min.js";
@@ -14,8 +14,14 @@ const AnnotatedPdfUpdate = ({ file }) => {
   const [isAddingAnnotation, setIsAddingAnnotation] = useState(false);
   const [currentAnnotation, setCurrentAnnotation] = useState(null);
   const [allAnnotations, setAllAnnotations] = useState([]);
+  const [isDrawingMode, setIsDrawingMode] = useState(false);
+  const [allDrawings, setAllDrawings] = useState([]);
+  const canvasRef = useRef(null);
   const pdfRef = useRef(null);
   const pdfPageRef = useRef(null);
+  const isDrawing = useRef(false);
+
+  const [numPages, setNumPages] = useState(null); // To keep track of the total pages
 
   useEffect(() => {
     if (!file) return;
@@ -99,22 +105,136 @@ const AnnotatedPdfUpdate = ({ file }) => {
     setIsAddingAnnotation(false);
   };
 
+  const handleAddDrawingClick = () => {
+    setIsDrawingMode(true);
+  };
+
+  const handleDrawingStart = (event) => {
+    if (!isDrawingMode || !canvasRef.current) return;
+    isDrawing.current = true;
+
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+
+  const handleDrawingMove = (event) => {
+    if (!isDrawingMode || !isDrawing.current || !canvasRef.current) return;
+
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    ctx.lineTo(x, y);
+    ctx.strokeStyle = "black";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    setAllDrawings((prev) => [...prev, { x, y }]);
+  };
+
+  const handleDrawingEnd = () => {
+    if (!isDrawingMode) return;
+    isDrawing.current = false;
+  };
+
+  const saveDrawingToPdf = async () => {
+    const existingPdfBytes = await fetch(pdfUrl).then((res) =>
+      res.arrayBuffer()
+    );
+    const pdfDoc = await PDFDocument.load(existingPdfBytes);
+    const pages = pdfDoc.getPages();
+    const firstPage = pages[pageNumber - 1];
+    const { width, height } = firstPage.getSize();
+
+    const canvas = canvasRef.current;
+    const pngImageBytes = canvas.toDataURL("image/png");
+    const pngImage = await pdfDoc.embedPng(pngImageBytes);
+    const pngDims = pngImage.scale(1 / zoomLevel);
+
+    firstPage.drawImage(pngImage, {
+      x: 0,
+      y: height - pngDims.height,
+      width: pngDims.width,
+      height: pngDims.height,
+    });
+
+    const modifiedPdfBytes = await pdfDoc.save();
+    const updatedPdfUrl = URL.createObjectURL(
+      new Blob([modifiedPdfBytes], { type: "application/pdf" })
+    );
+    setPdfUrl(updatedPdfUrl);
+
+    setIsDrawingMode(false);
+  };
+
+  const goToNextPage = () => {
+    if (pageNumber < numPages) {
+      setPageNumber(pageNumber + 1);
+    }
+  };
+
+  const goToPrevPage = () => {
+    if (pageNumber > 1) {
+      setPageNumber(pageNumber - 1);
+    }
+  };
+
   return (
     <div className="pdf-editor-container w-full max-w-screen-lg mx-auto p-4">
       <div className="flex justify-between items-center bg-gray-100 p-4 shadow-md mb-4 rounded-lg">
         <h2 className="text-lg font-bold text-gray-700">PDF Editor</h2>
+        <div className="space-x-4">
+          <button
+            onClick={handleAddAnnotationClick}
+            className="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600"
+          >
+            Add Annotation
+          </button>
+          <button
+            onClick={handleAddDrawingClick}
+            className="bg-green-500 text-white py-2 px-4 rounded hover:bg-green-600"
+          >
+            Add Drawing
+          </button>
+        </div>
+      </div>
+
+      <div className="flex justify-between items-center mb-4">
         <button
-          onClick={handleAddAnnotationClick}
-          className="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600"
+          onClick={goToPrevPage}
+          disabled={pageNumber === 1}
+          className="bg-gray-500 text-white py-2 px-4 rounded hover:bg-gray-600"
         >
-          Add Annotation
+          <ChevronLeft />
+        </button>
+        <span className="text-lg">
+          Page {pageNumber} of {numPages}
+        </span>
+        <button
+          onClick={goToNextPage}
+          disabled={pageNumber === numPages}
+          className="bg-gray-500 text-white py-2 px-4 rounded hover:bg-gray-600"
+        >
+          <ChevronRight />
         </button>
       </div>
 
       <div
         ref={pdfRef}
         className="pdf-view-container relative w-full max-w-screen-md mx-auto mb-4"
-        onClick={handleCanvasClick}
+        onClick={isDrawingMode ? null : handleCanvasClick}
+        onMouseDown={handleDrawingStart}
+        onMouseMove={handleDrawingMove}
+        onMouseUp={handleDrawingEnd}
+        onMouseLeave={handleDrawingEnd}
       >
         {isAddingAnnotation && currentAnnotation && (
           <textarea
@@ -133,9 +253,29 @@ const AnnotatedPdfUpdate = ({ file }) => {
           />
         )}
 
+        {isDrawingMode && (
+          <canvas
+            ref={canvasRef}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              zIndex: 50,
+              width: "100%",
+              height: "100%",
+              border: "1px solid black",
+            }}
+            width={pdfPageRef.current?.offsetWidth || 800}
+            height={pdfPageRef.current?.offsetHeight || 600}
+          ></canvas>
+        )}
+
         <Document
           file={pdfUrl}
-          onLoadSuccess={({ numPages }) => setPageNumber(numPages)}
+          onLoadSuccess={({ numPages }) => {
+            setNumPages(numPages);
+            setPageNumber(1);
+          }}
         >
           <Page
             pageNumber={pageNumber}
@@ -147,6 +287,15 @@ const AnnotatedPdfUpdate = ({ file }) => {
           />
         </Document>
       </div>
+
+      {isDrawingMode && (
+        <button
+          onClick={saveDrawingToPdf}
+          className="bg-yellow-500 text-white py-2 px-4 rounded hover:bg-yellow-600 mt-2"
+        >
+          Save Drawing
+        </button>
+      )}
     </div>
   );
 };
