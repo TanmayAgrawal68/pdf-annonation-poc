@@ -5,8 +5,14 @@ import { pdfjs } from "react-pdf";
 import { ZoomIn, ZoomOut, ChevronRight, ChevronLeft } from "lucide-react";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
-pdfjs.GlobalWorkerOptions.workerSrc = "pdfjs.worker.min.js";
+import { saveAs } from "file-saver";
 
+pdfjs.GlobalWorkerOptions.workerSrc = "pdfjs.worker.min.js";
+const tabcolors = {
+  colorblack: rgb(0, 0, 0),
+  colorred: rgb(1, 0, 0),
+  colorgreen: rgb(0, 1, 0),
+};
 const AnnotatedPdfUpdate = ({ file }) => {
   const [pdfUrl, setPdfUrl] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
@@ -20,8 +26,12 @@ const AnnotatedPdfUpdate = ({ file }) => {
   const pdfRef = useRef(null);
   const pdfPageRef = useRef(null);
   const isDrawing = useRef(false);
-
-  const [numPages, setNumPages] = useState(null); // To keep track of the total pages
+  const [numPages, setNumPages] = useState(null);
+  const [strokeColor, setStrokeColor] = useState("black");
+  const [textColor, setTextColor] = useState(tabcolors.colorblack);
+  const [lineThickness, setLineThickness] = useState(0.25);
+  const [fontSize, setFontSize] = useState(12);
+  const [uploadedImage, setUploadedImage] = useState(null);
 
   useEffect(() => {
     if (!file) return;
@@ -37,6 +47,24 @@ const AnnotatedPdfUpdate = ({ file }) => {
       setPdfUrl(pdfUrl);
     };
     fetchPdf();
+
+    const handleResize = () => {
+      if (canvasRef.current && pdfPageRef.current && pdfRef.current) {
+        const pdfContainerWidth = pdfRef.current.offsetWidth;
+        const pdfPageWidth = pdfPageRef.current.offsetWidth;
+
+        setZoomLevel(pdfContainerWidth / pdfPageWidth);
+
+        canvasRef.current.width = pdfPageWidth;
+        canvasRef.current.height = pdfPageRef.current.offsetHeight;
+      }
+    };
+
+    window.addEventListener("resize", handleResize);
+    handleResize(); // Initial adjustment
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
   }, [file]);
 
   const handleAddAnnotationClick = () => {
@@ -54,8 +82,8 @@ const AnnotatedPdfUpdate = ({ file }) => {
       x,
       y,
       text: "",
-      fontSize: 16,
-      color: "black",
+      fontSize: +fontSize,
+      color: strokeColor,
     };
     setCurrentAnnotation(newAnnotation);
   };
@@ -76,22 +104,20 @@ const AnnotatedPdfUpdate = ({ file }) => {
     const firstPage = pages[pageNumber - 1];
     const { width, height } = firstPage.getSize();
 
-    // Draw all previous annotations
-    allAnnotations.forEach((annotation) => {
-      firstPage.drawText(annotation.text, {
-        x: annotation.x / zoomLevel,
-        y: height - annotation.y / zoomLevel,
-        size: annotation.fontSize,
-        color: rgb(0, 0, 0),
-      });
-    });
+    // allAnnotations.forEach((annotation) => {
+    //   firstPage.drawText(annotation.text, {
+    //     x: annotation.x / zoomLevel,
+    //     y: height - annotation.y / zoomLevel,
+    //     size: annotation.fontSize,
+    //     color: strokeColor,
+    //   });
+    // });
 
-    // Draw the current annotation
     firstPage.drawText(currentAnnotation.text, {
       x: currentAnnotation.x / zoomLevel,
       y: height - currentAnnotation.y / zoomLevel,
       size: currentAnnotation.fontSize,
-      color: rgb(0, 0, 0),
+      color: textColor,
     });
 
     const modifiedPdfBytes = await pdfDoc.save();
@@ -116,11 +142,15 @@ const AnnotatedPdfUpdate = ({ file }) => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
     const rect = canvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+
+    const x = (event.touches?.[0]?.clientX || event.clientX) - rect.left;
+    const y = (event.touches?.[0]?.clientY || event.clientY) - rect.top;
 
     ctx.beginPath();
-    ctx.moveTo(x, y);
+    ctx.moveTo(
+      x * (canvas.width / rect.width),
+      y * (canvas.height / rect.height)
+    );
   };
 
   const handleDrawingMove = (event) => {
@@ -129,14 +159,18 @@ const AnnotatedPdfUpdate = ({ file }) => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
     const rect = canvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
 
-    ctx.lineTo(x, y);
-    ctx.strokeStyle = "black";
-    ctx.lineWidth = 2;
+    const x = (event.touches?.[0]?.clientX || event.clientX) - rect.left;
+    const y = (event.touches?.[0]?.clientY || event.clientY) - rect.top;
+
+    ctx.lineTo(
+      x * (canvas.width / rect.width),
+      y * (canvas.height / rect.height)
+    );
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = lineThickness;
+    ctx.lineJoin = "miter";
     ctx.stroke();
-
     setAllDrawings((prev) => [...prev, { x, y }]);
   };
 
@@ -186,26 +220,113 @@ const AnnotatedPdfUpdate = ({ file }) => {
       setPageNumber(pageNumber - 1);
     }
   };
+  const handleZoomIn = () => setZoomLevel((prev) => prev + 0.25);
+
+  const handleZoomOut = () =>
+    setZoomLevel((prev) => Math.max(0.25, prev - 0.25));
+  const downloadPdf = async () => {
+    if (!pdfUrl) return;
+
+    const response = await fetch(pdfUrl);
+    const blob = await response.blob();
+
+    // Save the PDF file
+    saveAs(blob, "annotated.pdf");
+  };
 
   return (
-    <div className="pdf-editor-container w-full max-w-screen-lg mx-auto p-4">
-      <div className="flex justify-between items-center bg-gray-100 p-4 shadow-md mb-4 rounded-lg">
-        <h2 className="text-lg font-bold text-gray-700">PDF Editor</h2>
-        <div className="space-x-4">
+    <div className="pdf-editor-container w-full max-w-screen-lg mx-auto md:p-4">
+      <div className="flex justify-between items-center bg-gray-100 sm:p-2  md:p-2 shadow-md mb-4 rounded-lg">
+        <h2 className="sm:text-sm md:text-lg  font-bold text-gray-700">
+          PDF Editor
+        </h2>
+        <div className=" flex md:space-x-4">
+          <button
+            onClick={downloadPdf}
+            className="bg-purple-500 text-white py-2 px-4 rounded hover:bg-purple-600"
+          >
+            Download PDF
+          </button>
           <button
             onClick={handleAddAnnotationClick}
-            className="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600"
+            className="bg-blue-500 text-white sm:p-4 md:py-2 md:px-4 rounded hover:bg-blue-600"
           >
             Add Annotation
           </button>
           <button
             onClick={handleAddDrawingClick}
-            className="bg-green-500 text-white py-2 px-4 rounded hover:bg-green-600"
+            className="bg-green-500 text-white  md:py-2 md:px-4 rounded hover:bg-green-600"
           >
             Add Drawing
           </button>
+          <button
+            onClick={handleZoomOut}
+            className="bg-gray-500 text-white md:py-2 md:px-4 rounded hover:bg-gray-600"
+          >
+            <ZoomOut />
+          </button>
+          <button
+            onClick={handleZoomIn}
+            className="bg-gray-500 text-white md:py-2 md:px-4 rounded hover:bg-gray-600"
+          >
+            <ZoomIn />
+          </button>
         </div>
       </div>
+      {(isDrawingMode || isAddingAnnotation) && (
+        <div className=" flex gap-5 items-center justify-center mt-2 mb-2">
+          <div className=" flex space-x-3 h-4 items-center ">
+            <p>Color set : </p>
+            <button
+              onClick={() => {
+                setStrokeColor("red");
+                setTextColor(tabcolors.colorred);
+              }}
+              className="bg-red-500 p-2 rounded-full"
+            ></button>
+            <button
+              onClick={() => {
+                setStrokeColor("black");
+                setTextColor(tabcolors.colorblack);
+              }}
+              className="bg-black p-2 rounded-full"
+            ></button>
+            <button
+              onClick={() => {
+                setStrokeColor("green");
+                setTextColor(tabcolors.colorgreen);
+              }}
+              className="bg-green-500 p-2 rounded-full"
+            ></button>
+          </div>
+          {isDrawingMode ? (
+            <div>
+              <select
+                onChange={(e) => setLineThickness(e.target.value)}
+                name="line Thickness"
+                id="lt"
+              >
+                <option value={0.25}>fine thick 0.25</option>
+                <option value={0.5}>semi fine thick 0.5</option>
+                <option value={1}> thick 1</option>
+                <option value={1.25}> marker 1.25</option>
+              </select>
+            </div>
+          ) : (
+            <div className="space-x-3">
+              <div>
+                <label>Font Size : </label>
+                <input
+                  className="border-gray-500 border-2 w-16 px-2 rounded-full"
+                  type="number"
+                  placeholder={fontSize + "px"}
+                  onChange={(e) => setFontSize(e.target.value)}
+                ></input>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex justify-between items-center mb-4">
         <button
@@ -229,22 +350,27 @@ const AnnotatedPdfUpdate = ({ file }) => {
 
       <div
         ref={pdfRef}
-        className="pdf-view-container relative w-full max-w-screen-md mx-auto mb-4"
+        className="pdf-view-container relative mx-auto mb-4 flex justify-center items-center"
         onClick={isDrawingMode ? null : handleCanvasClick}
         onMouseDown={handleDrawingStart}
         onMouseMove={handleDrawingMove}
         onMouseUp={handleDrawingEnd}
         onMouseLeave={handleDrawingEnd}
+        onTouchStart={handleDrawingStart}
+        onTouchMove={handleDrawingMove}
+        onTouchEnd={handleDrawingEnd}
+        style={{ overflow: "hidden", border: "1px solid black" }}
       >
         {isAddingAnnotation && currentAnnotation && (
           <textarea
             style={{
               position: "absolute",
-              top: currentAnnotation.y,
-              left: currentAnnotation.x,
+              top: currentAnnotation.y - 50,
+              left: currentAnnotation.x + 200,
               zIndex: 100,
               fontSize: `${currentAnnotation.fontSize}px`,
-              color: currentAnnotation.color,
+              color: strokeColor,
+              opacity: "0.9",
             }}
             value={currentAnnotation.text}
             onChange={handleTextChange}
@@ -263,29 +389,35 @@ const AnnotatedPdfUpdate = ({ file }) => {
               zIndex: 50,
               width: "100%",
               height: "100%",
-              border: "1px solid black",
             }}
             width={pdfPageRef.current?.offsetWidth || 800}
             height={pdfPageRef.current?.offsetHeight || 600}
           ></canvas>
         )}
 
-        <Document
-          file={pdfUrl}
-          onLoadSuccess={({ numPages }) => {
-            setNumPages(numPages);
-            setPageNumber(1);
-          }}
-        >
-          <Page
-            pageNumber={pageNumber}
-            scale={zoomLevel}
-            inputRef={(ref) => {
-              if (ref) pdfPageRef.current = ref;
+        <div className="relative flex justify-center items-center w-full">
+          <Document
+            file={pdfUrl}
+            onLoadSuccess={({ numPages }) => {
+              setNumPages(numPages);
+              setPageNumber(1);
             }}
-            className="relative z-0"
-          />
-        </Document>
+            className="shadow-2xl"
+          >
+            <Page
+              pageNumber={pageNumber}
+              scale={zoomLevel}
+              inputRef={(ref) => {
+                if (ref) pdfPageRef.current = ref;
+              }}
+              className="relative z-0"
+              style={{
+                display: "inline-block",
+                border: "1px solid black",
+              }}
+            />
+          </Document>
+        </div>
       </div>
 
       {isDrawingMode && (

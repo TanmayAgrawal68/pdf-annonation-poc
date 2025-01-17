@@ -2,6 +2,7 @@ import "./App.css";
 import React, { useState } from "react";
 import AnnotatedPdf from "./components/AnnonatedPdf";
 import AnnotatedPdfUpdate from "./components/AnnonatedPdfUpdate";
+import AnnotatedPdfkonva from "./components/AnnonatedPdfKonva";
 
 function App() {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -41,6 +42,11 @@ function App() {
       ) : (
         <p>Please select a PDF file to annotate.</p>
       )}
+      {/* {fileURL ? (
+        <AnnotatedPdfkonva file={fileURL} />
+      ) : (
+        <p>Please select a PDF file to annotate.</p>
+      )} */}
     </div>
   );
 }
