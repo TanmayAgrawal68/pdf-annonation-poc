@@ -2,7 +2,14 @@ import React, { useState, useRef, useEffect } from "react";
 import { PDFDocument, rgb } from "pdf-lib";
 import { Document, Page } from "react-pdf";
 import { pdfjs } from "react-pdf";
-import { ZoomIn, ZoomOut, ChevronRight, ChevronLeft } from "lucide-react";
+import {
+  ZoomIn,
+  ZoomOut,
+  ChevronRight,
+  ChevronLeft,
+  Undo,
+  Redo,
+} from "lucide-react";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import { saveAs } from "file-saver";
@@ -14,6 +21,8 @@ const tabcolors = {
   colorgreen: rgb(0, 1, 0),
 };
 const AnnotatedPdfUpdate = ({ file }) => {
+  const [undoCount, setUndoCount] = useState(0);
+  const [editedPdfs, setEditedPdfs] = useState([]);
   const [pdfUrl, setPdfUrl] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [zoomLevel, setZoomLevel] = useState(1);
@@ -31,8 +40,9 @@ const AnnotatedPdfUpdate = ({ file }) => {
   const [textColor, setTextColor] = useState(tabcolors.colorblack);
   const [lineThickness, setLineThickness] = useState(0.25);
   const [fontSize, setFontSize] = useState(12);
-  const [uploadedImage, setUploadedImage] = useState(null);
-
+  const [isDragging, setIsDragging] = useState(false);
+  const [imagePosition, setImagePosition] = useState({ x: 50, y: 50 });
+  const [imageSize, setImageSize] = useState({ width: 100, height: 100 });
   useEffect(() => {
     if (!file) return;
     const fetchPdf = async () => {
@@ -45,6 +55,7 @@ const AnnotatedPdfUpdate = ({ file }) => {
         new Blob([modifiedPdfBytes], { type: "application/pdf" })
       );
       setPdfUrl(pdfUrl);
+      setEditedPdfs([modifiedPdfBytes]);
     };
     fetchPdf();
 
@@ -125,6 +136,7 @@ const AnnotatedPdfUpdate = ({ file }) => {
       new Blob([modifiedPdfBytes], { type: "application/pdf" })
     );
     setPdfUrl(updatedPdfUrl);
+    setEditedPdfs((prev) => [...prev, modifiedPdfBytes]);
 
     setAllAnnotations([...allAnnotations, currentAnnotation]);
     setCurrentAnnotation(null);
@@ -205,7 +217,6 @@ const AnnotatedPdfUpdate = ({ file }) => {
       new Blob([modifiedPdfBytes], { type: "application/pdf" })
     );
     setPdfUrl(updatedPdfUrl);
-
     setIsDrawingMode(false);
   };
 
@@ -233,7 +244,36 @@ const AnnotatedPdfUpdate = ({ file }) => {
     // Save the PDF file
     saveAs(blob, "annotated.pdf");
   };
-
+  const handleImageUpload = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => setUploadedImage(reader.result);
+      reader.readAsDataURL(file);
+    }
+  };
+  const handleUndo = () => {
+    setUndoCount(undoCount + 1);
+    console.log("all Annonations : ", editedPdfs, "undoCount : ", undoCount);
+    const lastEdited = editedPdfs.length - undoCount - 1;
+    console.log("lastEdited : ", lastEdited);
+    const modifiedPdfBytes = editedPdfs[lastEdited];
+    const updatedPdfUrl = URL.createObjectURL(
+      new Blob([modifiedPdfBytes], { type: "application/pdf" })
+    );
+    setPdfUrl(updatedPdfUrl);
+  };
+  const handleRedo = () => {
+    setUndoCount((prev) => prev - 1);
+    console.log("all Annonations : ", editedPdfs, "undoCount : ", undoCount);
+    const lastEdited = editedPdfs.length - undoCount - 1;
+    console.log("lastEdited : ", lastEdited);
+    const modifiedPdfBytes = editedPdfs[lastEdited];
+    const updatedPdfUrl = URL.createObjectURL(
+      new Blob([modifiedPdfBytes], { type: "application/pdf" })
+    );
+    setPdfUrl(updatedPdfUrl);
+  };
   return (
     <div className="pdf-editor-container w-full max-w-screen-lg mx-auto md:p-4">
       <div className="flex justify-between items-center bg-gray-100 sm:p-2  md:p-2 shadow-md mb-4 rounded-lg">
@@ -241,6 +281,18 @@ const AnnotatedPdfUpdate = ({ file }) => {
           PDF Editor
         </h2>
         <div className=" flex md:space-x-4">
+          <button
+            onClick={handleUndo}
+            className="bg-gray-400 text-white py-2 px-4 rounded hover:bg-purple-600"
+          >
+            <Undo />
+          </button>
+          <button
+            onClick={handleRedo}
+            className="bg-gray-400 text-white py-2 px-4 rounded hover:bg-purple-600"
+          >
+            <Redo />
+          </button>
           <button
             onClick={downloadPdf}
             className="bg-purple-500 text-white py-2 px-4 rounded hover:bg-purple-600"
@@ -400,7 +452,7 @@ const AnnotatedPdfUpdate = ({ file }) => {
             file={pdfUrl}
             onLoadSuccess={({ numPages }) => {
               setNumPages(numPages);
-              setPageNumber(1);
+              setPageNumber(pageNumber);
             }}
             className="shadow-2xl"
           >
