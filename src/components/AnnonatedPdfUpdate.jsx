@@ -253,26 +253,35 @@ const AnnotatedPdfUpdate = ({ file }) => {
     }
   };
   const handleUndo = () => {
-    setUndoCount(undoCount + 1);
+    undoCount >= 0 && setUndoCount((prev) => prev + 1);
     console.log("all Annonations : ", editedPdfs, "undoCount : ", undoCount);
     const lastEdited = editedPdfs.length - undoCount - 1;
     console.log("lastEdited : ", lastEdited);
     const modifiedPdfBytes = editedPdfs[lastEdited];
-    const updatedPdfUrl = URL.createObjectURL(
-      new Blob([modifiedPdfBytes], { type: "application/pdf" })
-    );
-    setPdfUrl(updatedPdfUrl);
+    if (modifiedPdfBytes) {
+      const updatedPdfUrl = URL.createObjectURL(
+        new Blob([modifiedPdfBytes], { type: "application/pdf" })
+      );
+      setPdfUrl(updatedPdfUrl);
+    }
   };
   const handleRedo = () => {
     setUndoCount((prev) => prev - 1);
-    console.log("all Annonations : ", editedPdfs, "undoCount : ", undoCount);
-    const lastEdited = editedPdfs.length - undoCount - 1;
-    console.log("lastEdited : ", lastEdited);
-    const modifiedPdfBytes = editedPdfs[lastEdited];
-    const updatedPdfUrl = URL.createObjectURL(
-      new Blob([modifiedPdfBytes], { type: "application/pdf" })
+    console.log(
+      "all Annonations redo  : ",
+      editedPdfs,
+      "undoCount redo : ",
+      undoCount
     );
-    setPdfUrl(updatedPdfUrl);
+    const lastEdited = editedPdfs.length - undoCount - 1;
+    console.log("lastEdited Redo : ", lastEdited);
+    const modifiedPdfBytes = editedPdfs[lastEdited >= 0 ? lastEdited : 0];
+    if (modifiedPdfBytes) {
+      const updatedPdfUrl = URL.createObjectURL(
+        new Blob([modifiedPdfBytes], { type: "application/pdf" })
+      );
+      setPdfUrl(updatedPdfUrl);
+    }
   };
   return (
     <div className="pdf-editor-container w-full max-w-screen-lg mx-auto md:p-4">
