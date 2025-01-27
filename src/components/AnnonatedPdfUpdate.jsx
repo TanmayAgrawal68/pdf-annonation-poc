@@ -58,19 +58,21 @@ const AnnotatedPdfUpdate = ({ file }) => {
       setEditedPdfs([modifiedPdfBytes]);
     };
     fetchPdf();
-
     const handleResize = () => {
       if (canvasRef.current && pdfPageRef.current && pdfRef.current) {
         const pdfContainerWidth = pdfRef.current.offsetWidth;
         const pdfPageWidth = pdfPageRef.current.offsetWidth;
 
         setZoomLevel(pdfContainerWidth / pdfPageWidth);
+        console.log("zoomLevel : ", zoomLevel);
+        console.log("zzom calc : ");
 
         canvasRef.current.width = pdfPageWidth;
         canvasRef.current.height = pdfPageRef.current.offsetHeight;
+      } else {
+        setZoomLevel(0.6);
       }
     };
-
     window.addEventListener("resize", handleResize);
     handleResize(); // Initial adjustment
     return () => {
@@ -285,26 +287,26 @@ const AnnotatedPdfUpdate = ({ file }) => {
   };
   return (
     <div className="pdf-editor-container w-full max-w-screen-lg mx-auto md:p-4">
-      <div className="flex justify-between items-center bg-gray-100 sm:p-2  md:p-2 shadow-md mb-4 rounded-lg">
-        <h2 className="sm:text-sm md:text-lg  font-bold text-gray-700">
+      <div className=" md:flex justify-between items-center bg-gray-100 sm:p-2  md:p-2 shadow-md mb-4 rounded-lg">
+        <h2 className=" sm:text-sm md:text-lg  font-bold text-gray-700">
           PDF Editor
         </h2>
-        <div className=" flex md:space-x-4">
+        <div className="flex flex-col gap-2 md:flex-row md:space-x-4">
           <button
             onClick={handleUndo}
-            className="bg-gray-400 text-white py-2 px-4 rounded hover:bg-purple-600"
+            className="bg-gray-400 text-white md:py-2 md:px-4 rounded hover:bg-purple-600"
           >
             <Undo />
           </button>
           <button
             onClick={handleRedo}
-            className="bg-gray-400 text-white py-2 px-4 rounded hover:bg-purple-600"
+            className="bg-gray-400 text-white md:py-2 md:px-4 rounded hover:bg-purple-600"
           >
             <Redo />
           </button>
           <button
             onClick={downloadPdf}
-            className="bg-purple-500 text-white py-2 px-4 rounded hover:bg-purple-600"
+            className="bg-purple-500 text-white md:py-2 md:px-4 rounded hover:bg-purple-600"
           >
             Download PDF
           </button>
@@ -450,6 +452,8 @@ const AnnotatedPdfUpdate = ({ file }) => {
               zIndex: 50,
               width: "100%",
               height: "100%",
+              // backgroundColor: "yellow",
+              // opacity: 0.5,
             }}
             width={pdfPageRef.current?.offsetWidth || 800}
             height={pdfPageRef.current?.offsetHeight || 600}
