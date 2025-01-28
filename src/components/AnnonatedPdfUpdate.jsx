@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   Undo,
   Redo,
+  Highlighter
 } from "lucide-react";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -19,6 +20,7 @@ const tabcolors = {
   colorblack: rgb(0, 0, 0),
   colorred: rgb(1, 0, 0),
   colorgreen: rgb(0, 1, 0),
+  coloryellow: rgb(1, 1, 0), // Highlighter color
 };
 const AnnotatedPdfUpdate = ({ file }) => {
   const [undoCount, setUndoCount] = useState(0);
@@ -43,6 +45,9 @@ const AnnotatedPdfUpdate = ({ file }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [imagePosition, setImagePosition] = useState({ x: 50, y: 50 });
   const [imageSize, setImageSize] = useState({ width: 100, height: 100 });
+  const [isHighlighting, setIsHighlighting] = useState(false);
+  const [highlightRects, setHighlightRects] = useState([]);
+  const [pdfDocExisting, setPdfDocExisting] = useState('')
   useEffect(() => {
     if (!file) return;
     const fetchPdf = async () => {
@@ -50,6 +55,7 @@ const AnnotatedPdfUpdate = ({ file }) => {
         res.arrayBuffer()
       );
       const pdfDoc = await PDFDocument.load(existingPdfBytes);
+      setPdfDocExisting(pdfDoc)
       const modifiedPdfBytes = await pdfDoc.save();
       const pdfUrl = URL.createObjectURL(
         new Blob([modifiedPdfBytes], { type: "application/pdf" })
@@ -83,8 +89,11 @@ const AnnotatedPdfUpdate = ({ file }) => {
   const handleAddAnnotationClick = () => {
     setIsAddingAnnotation(true);
   };
+  const handleHighlightClick = () => {
+    setIsHighlighting(!isHighlighting);
+  };
 
-  const handleCanvasClick = (event) => {
+  const handleCanvasClick = async (event) => {
     if (!isAddingAnnotation || !pdfPageRef.current) return;
 
     const rect = pdfPageRef.current.getBoundingClientRect();
@@ -283,7 +292,89 @@ const AnnotatedPdfUpdate = ({ file }) => {
         new Blob([modifiedPdfBytes], { type: "application/pdf" })
       );
       setPdfUrl(updatedPdfUrl);
+
     }
+  };
+
+  let startX = null;
+  let startY = null;
+  let isTextSelected = false;
+
+  const calculateHighlightDimensions = (rect) => {
+    const pdfRect = pdfPageRef.current.getBoundingClientRect();
+
+    const x = rect.left - pdfRect.left;
+    const y = rect.top - pdfRect.top;
+    const width = rect.width;
+    const height = rect.height;
+
+    return { x, y, width, height };
+  };
+
+  const addHighlightToPdf = async (highlight) => {
+    if (!isHighlighting) return;
+    console.log("highlight", highlight);
+
+    const existingPdfBytes = await fetch(pdfUrl).then((res) => res.arrayBuffer());
+    const pdfDoc = await PDFDocument.load(existingPdfBytes);
+    const page = pdfDoc.getPages()[pageNumber - 1];
+    const { height } = page.getSize();
+
+    page.drawRectangle({
+      x: highlight.x / zoomLevel,
+      y: height - highlight.y / zoomLevel - highlight.height / zoomLevel,
+      width: highlight.width / zoomLevel,
+      height: highlight.height / zoomLevel,
+      color: tabcolors.coloryellow,
+      opacity: 0.5,
+    });
+
+    const updatedPdfBytes = await pdfDoc.save();
+    setPdfUrl(URL.createObjectURL(new Blob([updatedPdfBytes], { type: "application/pdf" })));
+  };
+
+  // MouseDown: Capture the start coordinates
+  const handleCanvasMouseDown = (event) => {
+    const { clientX, clientY } = event;
+    startX = clientX;
+    startY = clientY;
+    isTextSelected = false; // Reset selection flag
+    console.log("Mouse down at:", { startX, startY });
+  };
+
+  // MouseUp: Calculate dimensions and add the highlight
+  const handleCanvasMouseUp = (event) => {
+    if (!isHighlighting) return;
+
+    if (startX === null || startY === null) {
+      console.error("Start coordinates not set!");
+      return;
+    }
+
+    const selection = window.getSelection();
+    if (selection.rangeCount === 0 || !selection.toString().trim()) {
+      console.log("No text selected!");
+      return;
+    }
+
+    // Mark text as selected
+    isTextSelected = true;
+
+    // Get the bounding rectangle of the selected text
+    const range = selection.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+
+    // Calculate highlight dimensions
+    const dimensions = calculateHighlightDimensions(rect);
+
+    setHighlightRects([...highlightRects, dimensions]);
+    addHighlightToPdf(dimensions);
+
+    // Reset selection and coordinates
+    selection.removeAllRanges();
+    startX = null;
+    startY = null;
+    console.log("Mouse up at:", { endX: event.clientX, endY: event.clientY });
   };
   return (
     <div className="pdf-editor-container w-full max-w-screen-lg mx-auto md:p-4">
@@ -322,6 +413,14 @@ const AnnotatedPdfUpdate = ({ file }) => {
           >
             Add Drawing
           </button>
+          <button onClick={handleHighlightClick}
+          style={{
+            backgroundColor: isHighlighting ? "yellow" : "white",
+            border: "1px solid gray",
+            borderRadius: "5px",
+            padding: "5px 10px",
+            cursor: "pointer",
+          }}><Highlighter /></button>
           <button
             onClick={handleZoomOut}
             className="bg-gray-500 text-white md:py-2 md:px-4 rounded hover:bg-gray-600"
@@ -414,10 +513,20 @@ const AnnotatedPdfUpdate = ({ file }) => {
       <div
         ref={pdfRef}
         className="pdf-view-container relative mx-auto mb-4 flex justify-center items-center"
-        onClick={isDrawingMode ? null : handleCanvasClick}
-        onMouseDown={handleDrawingStart}
+        onClick={isHighlighting
+          ? addHighlightToPdf
+          : isDrawingMode ? null
+            : handleCanvasClick
+        }
+        onMouseUp={isHighlighting
+          ? handleCanvasMouseUp
+          : handleDrawingEnd
+        }
+        onMouseDown={isHighlighting
+          ? handleCanvasMouseDown
+          : handleDrawingStart
+        }
         onMouseMove={handleDrawingMove}
-        onMouseUp={handleDrawingEnd}
         onMouseLeave={handleDrawingEnd}
         onTouchStart={handleDrawingStart}
         onTouchMove={handleDrawingMove}
