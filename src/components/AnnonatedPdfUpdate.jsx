@@ -13,6 +13,8 @@ import {
   PenTool,
   Type,
   Download,
+  Highlighter,
+  Eraser
 } from "lucide-react";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -46,6 +48,10 @@ const AnnotatedPdfUpdate = ({ file }) => {
   const [textColor, setTextColor] = useState(tabcolors.colorblack);
   const [lineThickness, setLineThickness] = useState(0.25);
   const [fontSize, setFontSize] = useState(12);
+  const [highlightMode, sethighlightMode] = useState(false)
+  const [startPos, setStartPos] = useState(null);
+  const [ishighlightFlag, setHighlightFlag] = useState(false)
+  const [isEraseMode,setEraseMode]=useState(false)
 
   useEffect(() => {
     if (!file) return;
@@ -97,9 +103,32 @@ const AnnotatedPdfUpdate = ({ file }) => {
     }
   }, [isImageMode, scale, rotation, uploadImage]);
 
+    //alert event for saving the changes.
+    const alertMessageSave = () => {
+      if (isDrawingMode) {
+        alert("plse save the drawing ")
+        return false
+      }
+      else if (isImageMode) {
+        alert("plse save the image added ")
+        return false
+      }
+      else if (ishighlightFlag) {
+        alert("plse save the highlighted text ")
+        return false
+      }
+      else if (isAddingAnnotation) {
+        alert("plse save the added text ")
+        return false
+      }
+      return true
+    }
   const handleAddAnnotationClick = () => {
+    const canProceed = alertMessageSave();
+    if (!canProceed) return;
     setIsAddingAnnotation(true);
   };
+
   //To get event x and y co-ordinate for touch and click event
   const getEventCoordinates = (canvas, event) => {
     let rect = null;
@@ -174,6 +203,8 @@ const AnnotatedPdfUpdate = ({ file }) => {
   };
 
   const handleAddDrawingClick = () => {
+    const canProceed = alertMessageSave();  // Store return value
+    if (!canProceed) return;
     setIsDrawingMode(true);
   };
 
@@ -187,12 +218,19 @@ const AnnotatedPdfUpdate = ({ file }) => {
 
     const x = (event.touches?.[0]?.clientX || event.clientX) - rect.left;
     const y = (event.touches?.[0]?.clientY || event.clientY) - rect.top;
-
+    if(isEraseMode){
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    ctx.moveTo(x* (canvas.width / rect.width),y* (canvas.height / rect.height));
+    }
+    else{ 
     ctx.beginPath();
     ctx.moveTo(
       x * (canvas.width / rect.width),
       y * (canvas.height / rect.height)
     );
+  }
   };
 
   const handleDrawingMove = (event) => {
@@ -204,21 +242,30 @@ const AnnotatedPdfUpdate = ({ file }) => {
 
     const x = (event.touches?.[0]?.clientX || event.clientX) - rect.left;
     const y = (event.touches?.[0]?.clientY || event.clientY) - rect.top;
-
-    ctx.lineTo(
-      x * (canvas.width / rect.width),
-      y * (canvas.height / rect.height)
-    );
-    ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = lineThickness;
-    ctx.lineJoin = "miter";
-    ctx.stroke();
-    setAllDrawings((prev) => [...prev, { x, y }]);
+    if(isEraseMode){ 
+      ctx.lineTo(x* (canvas.width / rect.width), y* (canvas.height / rect.height));
+      ctx.stroke();
+    }else{
+      ctx.lineTo(
+        x * (canvas.width / rect.width),
+        y * (canvas.height / rect.height)
+      );
+      ctx.strokeStyle = strokeColor;
+      ctx.lineWidth = lineThickness;
+      ctx.lineJoin = "miter";
+      ctx.stroke();
+      setAllDrawings((prev) => [...prev, { x, y }]);
+  }
   };
 
   const handleDrawingEnd = () => {
     if (!isDrawingMode) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
     isDrawing.current = false;
+    if(isEraseMode){
+      ctx.globalCompositeOperation = "source-over";
+    }
   };
 
   const saveDrawingToPdf = async () => {
@@ -249,6 +296,7 @@ const AnnotatedPdfUpdate = ({ file }) => {
     setPdfUrl(updatedPdfUrl);
     setIsDrawingMode(false);
     setIsImageMode(false);
+    setHighlightFlag(false)
     fileInputRef.current.value = ""; // Clear input file
   };
 
@@ -311,6 +359,8 @@ const AnnotatedPdfUpdate = ({ file }) => {
 
   const handleImageUpload = (event) => {
     const file = event.target.files[0];
+    const canProceed = alertMessageSave();
+    if (!canProceed) return;
     setIsImageMode(true);
     if (file) {
       const reader = new FileReader();
@@ -518,6 +568,117 @@ const AnnotatedPdfUpdate = ({ file }) => {
     canvas.addEventListener("touchcancel", handleEnd);
   };
 
+  //Below code is for hightlighting
+  const drawLine = (ctx, startX, startY, endX, endY) => {
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    if(isEraseMode){ 
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.lineWidth = 20;
+    ctx.beginPath();
+    ctx.moveTo(startX* (canvas.width / rect.width),startY* (canvas.height / rect.height));
+    ctx.lineTo(endX* (canvas.width / rect.width), endY* (canvas.height / rect.height));
+    ctx.stroke();
+    ctx.globalCompositeOperation = "source-over";
+    }
+    else{
+    ctx.beginPath();
+    ctx.moveTo(startX * (canvas.width / rect.width), startY * (canvas.height / rect.height));
+    ctx.lineTo(endX * (canvas.width / rect.width), endY * (canvas.height / rect.height));
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 10;
+    ctx.globalAlpha = 0.5;
+    ctx.stroke();
+    }
+    
+  };
+
+  const handleMouseDown = (e) => {
+    if (!canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const { x, y } = getEventCoordinates(canvas, e)
+    setStartPos({
+      x: x,
+      y: y,
+    });
+    sethighlightMode(true);
+  };
+
+  const handleMouseMove = (e) => {
+    if (!highlightMode || !canvasRef.current) return;
+    if (startPos == null) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    const { x, y } = getEventCoordinates(canvas, e)
+    const endPos = {
+      x: x,
+      y: y,
+    };
+    if (startPos.x == null || startPos.y == null) return
+    drawLine(ctx, startPos.x, startPos.y, endPos.x, startPos.y);
+    setStartPos({ x: endPos.x, y: startPos.y })
+  };
+
+  const handleMouseUp = (e) => {
+    if (!highlightMode || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    const { x, y } = getEventCoordinates(canvas, e)
+    const endPos = {
+      x: x,
+      y: y,
+    };
+    setStartPos(endPos);
+    sethighlightMode(false);
+    setStartPos(null)
+  };
+  const handleHightlightMode = () => {
+    const canProceed = alertMessageSave();  // Store return value
+    if (!canProceed) return;
+    setHighlightFlag(true)
+    sethighlightMode(!highlightMode);
+    setStrokeColor("yellow");
+    setTextColor(tabcolors.coloryellow);
+  };
+
+  // handle erase event
+  const handleEraseClick = () => {
+   setEraseMode(!isEraseMode)
+  };
+
+  //handle event handlers for different states
+  const getEventHandlers = () => {
+    if (ishighlightFlag) {
+      return {
+        onMouseDown: handleMouseDown,
+        onMouseMove: handleMouseMove,
+        onMouseUp: handleMouseUp,
+        onTouchStart: handleMouseDown,
+        onTouchMove: handleMouseMove,
+        onTouchEnd: handleMouseUp,
+      };
+    }
+    if (isDrawingMode) {
+      return {
+        onMouseDown: handleDrawingStart,
+        onMouseMove: handleDrawingMove,
+        onMouseUp: handleDrawingEnd,
+        onMouseLeave: handleDrawingEnd,
+        onTouchStart: handleDrawingStart,
+        onTouchMove: handleDrawingMove,
+        onTouchEnd: handleDrawingEnd,
+      };
+    }
+
+    return {
+      onClick: handleCanvasClick, // Default click event
+    };
+  };
+
+  const eventHandlers = getEventHandlers();
   return (
     <div className="pdf-editor-container w-full max-w-screen-lg mx-auto md:p-4">
       <div className=" md:flex justify-between items-center bg-gray-100 sm:p-2  md:p-2 shadow-md mb-4 rounded-lg">
@@ -572,6 +733,26 @@ const AnnotatedPdfUpdate = ({ file }) => {
             className="bg-green-500 text-white  py-2 px-3 rounded-full hover:bg-green-600"
           >
             <PenTool />
+          </button>
+          <button onClick={handleHightlightMode}
+            style={{
+              backgroundColor: ishighlightFlag ? "yellow" : "white",
+              border: "1px solid gray",
+              borderRadius: "5px",
+              padding: "5px 10px",
+              cursor: "pointer",
+            }}>
+            <Highlighter /></button>
+          <button
+            onClick={handleEraseClick}
+            style={{
+              backgroundColor: isEraseMode ? 'red' : 'white', // Color change based on erase mode
+              borderRadius:"5px",
+              padding:"3px"
+            }}
+          >
+            <Eraser size={20} />
+            <span>Erase</span>
           </button>
           <div className="flex gap-2">
             <button
@@ -702,14 +883,7 @@ const AnnotatedPdfUpdate = ({ file }) => {
       <div
         ref={pdfRef}
         className="pdf-view-container relative mx-auto mb-4 flex justify-center items-center"
-        onClick={isDrawingMode ? null : handleCanvasClick}
-        onMouseDown={handleDrawingStart}
-        onMouseMove={handleDrawingMove}
-        onMouseUp={handleDrawingEnd}
-        onMouseLeave={handleDrawingEnd}
-        onTouchStart={handleDrawingStart}
-        onTouchMove={handleDrawingMove}
-        onTouchEnd={handleDrawingEnd}
+        {...eventHandlers}
         style={{ overflow: "hidden", border: "1px solid black" }}
       >
         {isAddingAnnotation && currentAnnotation && (
@@ -733,6 +907,23 @@ const AnnotatedPdfUpdate = ({ file }) => {
         )}
 
         {isDrawingMode && (
+          <canvas
+            ref={canvasRef}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              zIndex: 50,
+              width: "100%",
+              height: "100%",
+              // backgroundColor: "yellow",
+              // opacity: 0.5,
+            }}
+            width={pdfPageRef.current?.offsetWidth || 800}
+            height={pdfPageRef.current?.offsetHeight || 600}
+          ></canvas>
+        )}
+        {ishighlightFlag && (
           <canvas
             ref={canvasRef}
             style={{
@@ -793,7 +984,7 @@ const AnnotatedPdfUpdate = ({ file }) => {
         </div>
       </div>
 
-      {(isDrawingMode || isImageMode) && (
+      {(isDrawingMode || isImageMode || ishighlightFlag) && (
         <button
           onClick={saveDrawingToPdf}
           className="bg-yellow-500 text-white py-2 px-4 rounded hover:bg-yellow-600 mt-2"
