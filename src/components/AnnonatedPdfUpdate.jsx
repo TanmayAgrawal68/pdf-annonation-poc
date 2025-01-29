@@ -333,6 +333,86 @@ const AnnotatedPdfUpdate = ({ file }) => {
   //   };
 
   // };
+  // const drawImageOnCanvas = () => {
+  //   const canvas = canvasRef.current;
+  //   const ctx = canvas.getContext("2d");
+  //   const img = new Image();
+  //   img.src = uploadImage;
+
+  //   // Initial position for the image
+  //   let imageX = canvas.width / 2;
+  //   let imageY = canvas.height / 2;
+  //   let isDragging = false;
+  //   let dragOffsetX = 0;
+  //   let dragOffsetY = 0;
+
+  //   img.onload = () => {
+  //     ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
+
+  //     // Draw the image initially at the specified position
+  //     drawImage(ctx, img, imageX, imageY);
+  //   };
+
+  //   // Helper function to draw the image with transformations
+  //   const drawImage = (ctx, img, x, y) => {
+  //     ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas before redraw
+  //     ctx.save();
+  //     ctx.translate(x, y); // Move image center to (x, y)
+  //     ctx.rotate((rotation * Math.PI) / 180);
+  //     ctx.scale(scale, scale);
+  //     ctx.drawImage(
+  //       img,
+  //       -img.width / 2,
+  //       -img.height / 2,
+  //       img.width,
+  //       img.height
+  //     );
+  //     ctx.restore();
+  //   };
+
+  //   // Mouse down event to start dragging
+  //   canvas.addEventListener("mousedown", (e) => {
+  //     const rect = canvas.getBoundingClientRect();
+  //     const mouseX = e.clientX - rect.left;
+  //     const mouseY = e.clientY - rect.top;
+
+  //     // Check if the click is within the image bounds
+  //     if (
+  //       mouseX >= imageX - img.width / 2 &&
+  //       mouseX <= imageX + img.width / 2 &&
+  //       mouseY >= imageY - img.height / 2 &&
+  //       mouseY <= imageY + img.height / 2
+  //     ) {
+  //       isDragging = true;
+  //       dragOffsetX = mouseX - imageX;
+  //       dragOffsetY = mouseY - imageY;
+  //     }
+  //   });
+
+  //   // Mouse move event to drag the image
+  //   canvas.addEventListener("mousemove", (e) => {
+  //     if (isDragging) {
+  //       const rect = canvas.getBoundingClientRect();
+  //       const mouseX = e.clientX - rect.left;
+  //       const mouseY = e.clientY - rect.top;
+
+  //       imageX = mouseX - dragOffsetX;
+  //       imageY = mouseY - dragOffsetY;
+
+  //       drawImage(ctx, img, imageX, imageY); // Redraw image at new position
+  //     }
+  //   });
+
+  //   // Mouse up event to stop dragging
+  //   canvas.addEventListener("mouseup", () => {
+  //     isDragging = false;
+  //   });
+
+  //   // Mouse out event to stop dragging when leaving canvas
+  //   canvas.addEventListener("mouseout", () => {
+  //     isDragging = false;
+  //   });
+  // };
   const drawImageOnCanvas = () => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
@@ -348,12 +428,9 @@ const AnnotatedPdfUpdate = ({ file }) => {
 
     img.onload = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
-
-      // Draw the image initially at the specified position
       drawImage(ctx, img, imageX, imageY);
     };
 
-    // Helper function to draw the image with transformations
     const drawImage = (ctx, img, x, y) => {
       ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas before redraw
       ctx.save();
@@ -370,48 +447,67 @@ const AnnotatedPdfUpdate = ({ file }) => {
       ctx.restore();
     };
 
-    // Mouse down event to start dragging
-    canvas.addEventListener("mousedown", (e) => {
+    // Normalize touch/mouse event coordinates
+    const getEventCoordinates = (event) => {
       const rect = canvas.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
+      if (event.touches && event.touches.length > 0) {
+        return {
+          x: event.touches[0].clientX - rect.left,
+          y: event.touches[0].clientY - rect.top,
+        };
+      }
+      return {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+      };
+    };
 
-      // Check if the click is within the image bounds
+    // Mouse and touch down event to start dragging
+    const handleStart = (event) => {
+      event.preventDefault();
+      const { x, y } = getEventCoordinates(event);
+
+      // Check if the click/touch is within the image bounds
       if (
-        mouseX >= imageX - img.width / 2 &&
-        mouseX <= imageX + img.width / 2 &&
-        mouseY >= imageY - img.height / 2 &&
-        mouseY <= imageY + img.height / 2
+        x >= imageX - img.width / 2 &&
+        x <= imageX + img.width / 2 &&
+        y >= imageY - img.height / 2 &&
+        y <= imageY + img.height / 2
       ) {
         isDragging = true;
-        dragOffsetX = mouseX - imageX;
-        dragOffsetY = mouseY - imageY;
+        dragOffsetX = x - imageX;
+        dragOffsetY = y - imageY;
       }
-    });
+    };
 
-    // Mouse move event to drag the image
-    canvas.addEventListener("mousemove", (e) => {
+    // Mouse and touch move event to drag the image
+    const handleMove = (event) => {
       if (isDragging) {
-        const rect = canvas.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
+        event.preventDefault();
+        const { x, y } = getEventCoordinates(event);
 
-        imageX = mouseX - dragOffsetX;
-        imageY = mouseY - dragOffsetY;
+        imageX = x - dragOffsetX;
+        imageY = y - dragOffsetY;
 
-        drawImage(ctx, img, imageX, imageY); // Redraw image at new position
+        drawImage(ctx, img, imageX, imageY);
       }
-    });
+    };
 
-    // Mouse up event to stop dragging
-    canvas.addEventListener("mouseup", () => {
+    // Mouse and touch up event to stop dragging
+    const handleEnd = () => {
       isDragging = false;
-    });
+    };
 
-    // Mouse out event to stop dragging when leaving canvas
-    canvas.addEventListener("mouseout", () => {
-      isDragging = false;
-    });
+    // Add mouse and touch event listeners
+    canvas.addEventListener("mousedown", handleStart);
+    canvas.addEventListener("mousemove", handleMove);
+    canvas.addEventListener("mouseup", handleEnd);
+    canvas.addEventListener("mouseout", handleEnd);
+
+    canvas.addEventListener("touchstart", handleStart, { passive: false });
+    canvas.addEventListener("touchmove", handleMove, { passive: false });
+    canvas.addEventListener("touchend", handleEnd);
+    canvas.addEventListener("touchcancel", handleEnd);
   };
 
   return (
@@ -612,8 +708,8 @@ const AnnotatedPdfUpdate = ({ file }) => {
           <textarea
             style={{
               position: "absolute",
-              top: currentAnnotation.y - 50,
-              left: currentAnnotation.x + 200,
+              top: currentAnnotation.y,
+              left: currentAnnotation.x,
               zIndex: 100,
               fontSize: `${currentAnnotation.fontSize}px`,
               color: strokeColor,
