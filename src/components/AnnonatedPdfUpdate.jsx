@@ -33,6 +33,7 @@ const AnnotatedPdfUpdate = ({ file }) => {
   const [zoomLevel, setZoomLevel] = useState(1);
   const [isAddingAnnotation, setIsAddingAnnotation] = useState(false);
   const [currentAnnotation, setCurrentAnnotation] = useState(null);
+  const [annotationCordinates, setAnnotationCordinates] = useState({});
   const [allAnnotations, setAllAnnotations] = useState([]);
   const [isDrawingMode, setIsDrawingMode] = useState(false);
   const [allDrawings, setAllDrawings] = useState([]);
@@ -99,14 +100,34 @@ const AnnotatedPdfUpdate = ({ file }) => {
   const handleAddAnnotationClick = () => {
     setIsAddingAnnotation(true);
   };
+  //To get event x and y co-ordinate for touch and click event
+  const getEventCoordinates = (canvas, event) => {
+    let rect = null;
+    if (canvas) {
+      rect = canvas.getBoundingClientRect();
+    } else {
+      rect = pdfPageRef.current.getBoundingClientRect();
+    }
+    if (event.touches && event.touches.length > 0) {
+      return {
+        x: event.touches[0].clientX - rect.left,
+        y: event.touches[0].clientY - rect.top,
+      };
+    }
+    return {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    };
+  };
 
   const handleCanvasClick = (event) => {
     if (!isAddingAnnotation || !pdfPageRef.current) return;
 
-    const rect = pdfPageRef.current.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-
+    // const rect = pdfPageRef.current.getBoundingClientRect();
+    // const x = event.clientX - rect.left;
+    // const y = event.clientY - rect.top;
+    const { x, y } = getEventCoordinates(null, event);
+    setAnnotationCordinates({ x, y });
     const newAnnotation = {
       x,
       y,
@@ -413,6 +434,8 @@ const AnnotatedPdfUpdate = ({ file }) => {
   //     isDragging = false;
   //   });
   // };
+  // Normalize touch/mouse event coordinates
+
   const drawImageOnCanvas = () => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
@@ -447,25 +470,10 @@ const AnnotatedPdfUpdate = ({ file }) => {
       ctx.restore();
     };
 
-    // Normalize touch/mouse event coordinates
-    const getEventCoordinates = (event) => {
-      const rect = canvas.getBoundingClientRect();
-      if (event.touches && event.touches.length > 0) {
-        return {
-          x: event.touches[0].clientX - rect.left,
-          y: event.touches[0].clientY - rect.top,
-        };
-      }
-      return {
-        x: event.clientX - rect.left,
-        y: event.clientY - rect.top,
-      };
-    };
-
     // Mouse and touch down event to start dragging
     const handleStart = (event) => {
       event.preventDefault();
-      const { x, y } = getEventCoordinates(event);
+      const { x, y } = getEventCoordinates(canvas, event);
 
       // Check if the click/touch is within the image bounds
       if (
@@ -484,7 +492,7 @@ const AnnotatedPdfUpdate = ({ file }) => {
     const handleMove = (event) => {
       if (isDragging) {
         event.preventDefault();
-        const { x, y } = getEventCoordinates(event);
+        const { x, y } = getEventCoordinates(canvas, event);
 
         imageX = x - dragOffsetX;
         imageY = y - dragOffsetY;
@@ -708,8 +716,10 @@ const AnnotatedPdfUpdate = ({ file }) => {
           <textarea
             style={{
               position: "absolute",
-              top: currentAnnotation.y,
-              left: currentAnnotation.x,
+              // top: currentAnnotation.y,
+              // left: currentAnnotation.x,
+              top: annotationCordinates.y,
+              left: annotationCordinates.x,
               zIndex: 100,
               fontSize: `${currentAnnotation.fontSize}px`,
               color: strokeColor,
