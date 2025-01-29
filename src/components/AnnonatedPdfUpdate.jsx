@@ -35,7 +35,10 @@ const AnnotatedPdfUpdate = ({ file }) => {
   const [zoomLevel, setZoomLevel] = useState(1);
   const [isAddingAnnotation, setIsAddingAnnotation] = useState(false);
   const [currentAnnotation, setCurrentAnnotation] = useState(null);
-  const [annotationCordinates, setAnnotationCordinates] = useState({});
+  const [annotationCordinates, setAnnotationCordinates] = useState({
+    x: 0,
+    y: 0,
+  });
   const [allAnnotations, setAllAnnotations] = useState([]);
   const [isDrawingMode, setIsDrawingMode] = useState(false);
   const [allDrawings, setAllDrawings] = useState([]);
@@ -65,7 +68,7 @@ const AnnotatedPdfUpdate = ({ file }) => {
         new Blob([modifiedPdfBytes], { type: "application/pdf" })
       );
       setPdfUrl(pdfUrl);
-      setEditedPdfs([modifiedPdfBytes]);
+      setEditedPdfs((prev) => [...prev, modifiedPdfBytes]);
     };
     fetchPdf();
     const handleResize = () => {
@@ -126,7 +129,7 @@ const AnnotatedPdfUpdate = ({ file }) => {
   const handleAddAnnotationClick = () => {
     const canProceed = alertMessageSave();
     if (!canProceed) return;
-    setIsAddingAnnotation(true);
+    setIsAddingAnnotation((prev) => !prev);
   };
 
   //To get event x and y co-ordinate for touch and click event
@@ -297,6 +300,7 @@ const AnnotatedPdfUpdate = ({ file }) => {
     setIsDrawingMode(false);
     setIsImageMode(false);
     setHighlightFlag(false)
+    setEditedPdfs((prev) => [...prev, modifiedPdfBytes]);
     fileInputRef.current.value = ""; // Clear input file
   };
 
@@ -326,10 +330,13 @@ const AnnotatedPdfUpdate = ({ file }) => {
   };
 
   const handleUndo = () => {
-    undoCount >= 0 && setUndoCount((prev) => prev + 1);
-    console.log("all Annonations : ", editedPdfs, "undoCount : ", undoCount);
-    const lastEdited = editedPdfs.length - undoCount - 1;
-    console.log("lastEdited : ", lastEdited);
+    setUndoCount((prev) =>
+      prev < editedPdfs.length ? prev + 1 : editedPdfs.length
+    );
+    console.log("Undo : ", undoCount);
+    const lastEdited = editedPdfs.length - 2 - undoCount;
+    console.log("last edited undo : ", lastEdited);
+
     const modifiedPdfBytes = editedPdfs[lastEdited];
     if (modifiedPdfBytes) {
       const updatedPdfUrl = URL.createObjectURL(
@@ -339,16 +346,17 @@ const AnnotatedPdfUpdate = ({ file }) => {
     }
   };
   const handleRedo = () => {
-    setUndoCount((prev) => prev - 1);
+    setUndoCount((prev) => (prev > 0 ? prev - 1 : 0));
+    console.log("red : ", undoCount);
+    const lastEdited = editedPdfs.length - undoCount;
     console.log(
-      "all Annonations redo  : ",
-      editedPdfs,
-      "undoCount redo : ",
-      undoCount
+      "last edited redo : ",
+      editedPdfs.length,
+      undoCount,
+      lastEdited
     );
-    const lastEdited = editedPdfs.length - undoCount - 1;
-    console.log("lastEdited Redo : ", lastEdited);
     const modifiedPdfBytes = editedPdfs[lastEdited >= 0 ? lastEdited : 0];
+    // const modifiedPdfBytes = editedPdfs[lastEdited];
     if (modifiedPdfBytes) {
       const updatedPdfUrl = URL.createObjectURL(
         new Blob([modifiedPdfBytes], { type: "application/pdf" })
@@ -370,121 +378,6 @@ const AnnotatedPdfUpdate = ({ file }) => {
       reader.readAsDataURL(file);
     }
   };
-  // const drawImageOnCanvas = () => {
-  //   const canvas = canvasRef.current;
-  //   const ctx = canvas.getContext("2d");
-  //   const img = new Image();
-  //   img.src = uploadImage;
-  //   console.log("image : ", uploadImage);
-
-  //   img.onload = () => {
-  //     ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas before redraw
-
-  //     // Re-render the PDF content if needed
-  //     // renderPDF(pdfFile);
-
-  //     ctx.save();
-
-  //     // Apply transformations (scaling and rotation)
-  //     ctx.translate(canvas.width / 2, canvas.height / 2); // Move to center for rotation
-  //     ctx.rotate((rotation * Math.PI) / 180);
-  //     ctx.scale(scale, scale);
-
-  //     // Draw image at adjusted position
-  //     ctx.drawImage(
-  //       img,
-  //       -img.width / 2,
-  //       -img.height / 2,
-  //       img.width,
-  //       img.height
-  //     );
-
-  //     ctx.restore();
-
-  //   };
-
-  // };
-  // const drawImageOnCanvas = () => {
-  //   const canvas = canvasRef.current;
-  //   const ctx = canvas.getContext("2d");
-  //   const img = new Image();
-  //   img.src = uploadImage;
-
-  //   // Initial position for the image
-  //   let imageX = canvas.width / 2;
-  //   let imageY = canvas.height / 2;
-  //   let isDragging = false;
-  //   let dragOffsetX = 0;
-  //   let dragOffsetY = 0;
-
-  //   img.onload = () => {
-  //     ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
-
-  //     // Draw the image initially at the specified position
-  //     drawImage(ctx, img, imageX, imageY);
-  //   };
-
-  //   // Helper function to draw the image with transformations
-  //   const drawImage = (ctx, img, x, y) => {
-  //     ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas before redraw
-  //     ctx.save();
-  //     ctx.translate(x, y); // Move image center to (x, y)
-  //     ctx.rotate((rotation * Math.PI) / 180);
-  //     ctx.scale(scale, scale);
-  //     ctx.drawImage(
-  //       img,
-  //       -img.width / 2,
-  //       -img.height / 2,
-  //       img.width,
-  //       img.height
-  //     );
-  //     ctx.restore();
-  //   };
-
-  //   // Mouse down event to start dragging
-  //   canvas.addEventListener("mousedown", (e) => {
-  //     const rect = canvas.getBoundingClientRect();
-  //     const mouseX = e.clientX - rect.left;
-  //     const mouseY = e.clientY - rect.top;
-
-  //     // Check if the click is within the image bounds
-  //     if (
-  //       mouseX >= imageX - img.width / 2 &&
-  //       mouseX <= imageX + img.width / 2 &&
-  //       mouseY >= imageY - img.height / 2 &&
-  //       mouseY <= imageY + img.height / 2
-  //     ) {
-  //       isDragging = true;
-  //       dragOffsetX = mouseX - imageX;
-  //       dragOffsetY = mouseY - imageY;
-  //     }
-  //   });
-
-  //   // Mouse move event to drag the image
-  //   canvas.addEventListener("mousemove", (e) => {
-  //     if (isDragging) {
-  //       const rect = canvas.getBoundingClientRect();
-  //       const mouseX = e.clientX - rect.left;
-  //       const mouseY = e.clientY - rect.top;
-
-  //       imageX = mouseX - dragOffsetX;
-  //       imageY = mouseY - dragOffsetY;
-
-  //       drawImage(ctx, img, imageX, imageY); // Redraw image at new position
-  //     }
-  //   });
-
-  //   // Mouse up event to stop dragging
-  //   canvas.addEventListener("mouseup", () => {
-  //     isDragging = false;
-  //   });
-
-  //   // Mouse out event to stop dragging when leaving canvas
-  //   canvas.addEventListener("mouseout", () => {
-  //     isDragging = false;
-  //   });
-  // };
-  // Normalize touch/mouse event coordinates
 
   const drawImageOnCanvas = () => {
     const canvas = canvasRef.current;
